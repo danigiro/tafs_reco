@@ -9,4 +9,15 @@
 *_cache
 README.html
 
+*.log
+*.synctex.gz
+*.snm
+*.toc
+*.nav
+*.vrb
+*.out
+*.aux
+*.blg
+*.bbl
+
 /.quarto/
