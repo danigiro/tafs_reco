@@ -1,0 +1,650 @@
+---
+title: How to use forecast reconciliation 
+subtitle: "Cross-temporal probabilistic forecast reconciliation <br> _Time Series Analysis And Forecasting Society_"
+author: 
+  - name: Daniele Girolimetto
+    affiliations: Department of Statistical Sciences, University of Padova (Italy)
+    email: daniele.girolimetto@unipd.it
+    url: https://danigiro.github.io/
+date: 04/16/2024
+format:
+  html: 
+    theme:
+      light: cosmo
+      dark: cyborg
+    template-partials:
+      - title-block.html
+    fontsize: 11pt
+    linestretch: 1.3
+    toc: true
+    html-math-method: katex
+    code-line-numbers: true
+    code-link: true
+    highlight-style: github
+    title-block-banner: false
+    fig-align: center
+    fig-dpi: 300
+    self-contained: true
+    embed-resources: true
+    self-contained-math: true
+knitr:
+  opts_chunk: 
+    collapse: true
+    comment: "#>" 
+    cache: true
+    code-summary: "Plot code"
+editor: visual
+bibliography: references.bib
+---
+
+## Introduction
+
+In this tutorial, our focus will be on implementing point and probabilistic forecast reconciliation using the FoReco package within the cross-sectional, temporal, and cross-temporal framework. The FoReco package offers robust solutions to reconcile forecasts, ensuring consistency and coherence across various dimensions. One of the challenges addressed by FoReco is the non-negativity problem, which arises when negative forecast values are not feasible in certain contexts.
+
+This lab session is structured into three main parts:
+
+1.  **Explore and visualize the data:** this initial phase involves delving into the dataset to uncover its underlying structures, both cross-sectional and temporal.
+
+2.  **Base forecasts:** we employ the class of exponential smoothing (ETS) models to generate base forecasts. Additionally, we extract relevant features for the reconciliation phase from the fitted models.
+
+3.  **Reconciled forecasts:** The final phase focuses on applying the FoReco package to obtain point and probabilistic forecasts.
+
+Through this tutorial, we will explore practical examples and hands-on exercises to illustrate the implementation of forecast reconciliation techniques using the FoReco package.
+
+## Packages
+
+Load the packages:
+
+```{r}
+#| label: "package"
+#| output: false
+library(forecast)   # Forecasting functions (e.g, base forecasts and residuals)
+library(FoReco)     # bootstrap and reconciliation phase
+library(GMCM)       # Sample from a multivariate normal distibution
+
+# Plot and analysis
+library(ggplot2)    
+library(reshape2)
+library(dplyr)
+```
+
+## The data
+
+The Australian Tourism Demand dataset [@wickramasuriya2018; @girolimetto2023] measures the number of nights Australians spent away from home. It includes 228 monthly observations of Visitor Nights (VNs) from January 1998 to December 2016, and has a cross-sectional grouped structure based on a geographic hierarchy crossed by purpose of travel. The monthly bottom times series are available at [robjhyndman.com/data/TourismData_v3.csv](https://robjhyndman.com/data/TourismData_v3.csv).
+
+```{r}
+#| label: "data"
+bts <- read.csv(url("https://robjhyndman.com/data/TourismData_v3.csv"))
+bts <- ts(bts[, -c(1:2)], start = c(1998, 1), frequency = 12)
+str(bts)
+```
+
+![Australian Tourism Demand cross-sectional and temporal structure](images/infoVN.png){fig-align="center"}
+
+The geographic hierarchy comprises 7 states, 27 zones, and 76 regions, for a total of 111 nested geographic divisions. Six of these zones are each formed by a single region, resulting in 105 unique nodes in the hierarchy. The purpose of travel comprises four categories: holiday, visiting friends and relatives, business, and other. To avoid redundancies [@difonzo2024], 24 nodes (6 zones are formed by a single region) are not considered, resulting in an unbalanced hierarchy of 525 unique nodes instead of the theoretical 555 with duplicated nodes.
+
+![A simple unbalanced hierarchy (left) and its balanced version (right). Source: @difonzo2024.](images/bal_unb.png){style="width: 75%" fig-align="center"}
+
+The dataset includes the 304 bottom series, which are aggregated into 221 upper time series.
+
+```{r}
+#| label: "cs_data"
+Craw <- read.csv("data/aggregation_matrix.csv")
+C <- as.matrix(Craw[,-1])                # Aggregation matrix
+rownames(C) <- Craw[,1]
+S <- hts_tools(C, sparse = FALSE)$S      # Structual matrix
+Ut <- hts_tools(C, sparse = FALSE)$Ut
+
+```
+
+The data can be temporally aggregated into two, three, four, six, or twelve months ($\mathcal{K}=\{12, 6, 4, 3, 2, 1\}$).
+
+```{r}
+#| label: "te_data"
+te_set <- thf_tools(12)$kset
+Zt <- thf_tools(12)$Zt
+```
+
+We can use the structural matrix `S` to aggregate the `bts` object and we obtain the $(228 \times 525)$ mts object with all the monthly observed data.
+
+```{r}
+#| label: "monthly_data"
+data <- ts(bts %*% t(S), start = c(1998, 1), frequency = 12)
+str(data)
+```
+
+```{r}
+#| label: "plot_data"
+#| layout-ncol: 2
+#| fig-cap: 
+#|   - "Australia monthly time series"
+#|   - "Monthly time series aggregated by states"
+#|   - "Monthly time series aggregated by purpose of travel"
+#|   - "Monthly bottom time series"
+#| code-fold: true
+#| code-summary: "Plot code"
+#| out-width: "90%"
+#| fig-align: "center"
+#| fig-width: 6
+#| fig-height: 5
+data_plot <- data
+id_bts <- round(seq(1, NCOL(bts), length.out = 10))
+states <- c("NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT")
+colnames(data_plot)[colnames(data) %in% LETTERS[1:7]] <- states
+autoplot(data_plot[,"Total"], y = NULL, 
+         main = "Australia (total)") + theme_minimal()
+autoplot(data_plot[, states], y = NULL, 
+         main = "States") + theme_minimal()
+autoplot(data_plot[, c("Hol", "Vis", "Bus", "Oth")], y = NULL, 
+         main = "Purpose of travel") + theme_minimal()
+autoplot(bts[,id_bts], y = NULL) + theme_minimal()
+```
+
+### Base forecast
+
+In this section, we generate the base forecasts for the 2017. In particular, ETS models selected by minimizing the AICc [@hyndman2008] are fitted to the log-transformed data, with the resulting base forecasts being back-transformed to produce non-negative forecasts [@wickramasuriya2020]. We obtain twelve-, six-, four-, three-, two-, and one-step-ahead base forecasts from the monthly data and the aggregation over 2, 3, 4, 6, and 12 months.
+
+In addition to the base forecasts, we also extract from the model:
+
+-   **in-sample residuals** at all levels of aggregation to compute the covariance matrix to be used in reconciliation;
+
+-   **multi-step residuals** from the model to construct the covariance matrix to simulate paths at forecast horizons greater than one ($h > 1$).
+
+```{r}
+#| label: "base"
+#| eval: false
+# ETS model with log transformation
+ets_log <- function(x, ...){
+  x[x==0] <- min(x[x!=0])/2
+  ets(x, lambda = 0, ...)
+}
+
+fit <- NULL
+base <- NULL
+res <- NULL
+for(k in te_set){
+  data_k <- ts(agg_ts(k, data), start = c(1998, 1), frequency = 12/k)
+  for(i in 1:NCOL(data_k)){
+    fit[[paste0("k-", k)]][[colnames(data_k)[i]]] <- ets_log(data_k[,i])
+  }
+  
+  res[[paste0("k-", k)]] <- sapply(fit[[paste0("k-", k)]], 
+                                   residuals, type = "response")
+  base[[paste0("k-", k)]] <- sapply(fit[[paste0("k-", k)]], 
+                                    function(mod){
+                                      forecast(mod, h = frequency(mod$x))$mean
+                                      })
+  cat(k, " ")
+}
+
+# Multi-step residuals
+hres <- lapply(fit, function(fitk)
+  lapply(1:frequency(fitk$Total$x), function(h) 
+    sapply(fitk, residuals, type='response', h = h)))
+```
+
+```{r}
+#| label: "load_base"
+#| echo: false
+load("data/base_model.RData")
+```
+
+**In summary**, the fitted models, base forecasts, in-sample and multi-step residuals are stored in the following objects:
+
+::: columns
+::: column
+1.  Fitted models -\> `fit`
+
+```         
+fit: List of 6 
+ |- 'k-12': List of 525 ETS models
+ |- 'k-6' : List of 525 ETS models
+ |- 'k-4' : List of 525 ETS models
+ |- 'k-3' : List of 525 ETS models
+ |- 'k-2' : List of 525 ETS models
+ |- 'k-1' : List of 525 ETS models
+```
+
+2.  Base forecasts -\> `base`
+
+```         
+base: List of 6 
+ |- 'k-12': Matrix [1:1,  1:525]
+ |- 'k-6' : Matrix [1:2,  1:525]
+ |- 'k-4' : Matrix [1:3,  1:525]
+ |- 'k-3' : Matrix [1:4,  1:525]
+ |- 'k-2' : Matrix [1:6,  1:525]
+ |- 'k-1' : Matrix [1:12, 1:525]
+```
+
+3.  In-sample residuals -\> `res`
+
+```         
+res: List of 6 
+ |- 'k-12': Matrix [1:19,  1:525]
+ |- 'k-6' : Matrix [1:38,  1:525]
+ |- 'k-4' : Matrix [1:57,  1:525]
+ |- 'k-3' : Matrix [1:76,  1:525]
+ |- 'k-2' : Matrix [1:114, 1:525]
+ |- 'k-1' : Matrix [1:228, 1:525]
+```
+:::
+
+::: column
+4.  Multi-step residuals -\> `hres`
+
+```         
+hres: List of 6 
+ |- 'k-12': List of 1
+ |    |- 'h-1' : Matrix [1:19,  1:525]
+ |- 'k-6' : List of 2
+ |    |- 'h-1' : Matrix [1:38,  1:525]
+ |    |- 'h-2' : Matrix [1:38,  1:525]
+ |- 'k-4' : List of 3
+ |    |- 'h-1' : Matrix [1:57,  1:525]
+ |    |- 'h-2' : Matrix [1:57,  1:525]
+ |    |- 'h-3' : Matrix [1:57,  1:525]
+ |- 'k-3' : List of 4
+ |    |- 'h-1' : Matrix [1:76,  1:525]
+ |    |   ...
+ |    |- 'h-4' : Matrix [1:76,  1:525]
+ |- 'k-2' : List of 6
+ |    |- 'h-1' : Matrix [1:114,  1:525]
+ |    |   ...
+ |    |- 'h-6' : Matrix [1:114,  1:525]
+ |- 'k-1' : List of 12
+ |    |- 'h-1' : Matrix [1:228,  1:525]
+ |    |   ...
+ |    |- 'h-12': Matrix [1:228,  1:525]
+```
+:::
+:::
+
+## Optimal forecast reconciliation
+
+The `FoReco` package provides a flexible structure for reconciling forecasts across different dimensions, such as cross-sectional, temporal, and cross-temporal. The reconciliation process involves generating point and probabilistic forecasts that are coherent and consistent with the underlying data structure. Within `FoReco`, a range of reconciliation strategies are available, including bottom-up, top-down, level conditional coherent forecast reconciliation, and cross-temporal heuristics. However, this tutorial will concentrate "only" on the *optimal (in least squares sense) forecast reconciliation* [@hyndman2011].
+
+This section is divided into three parts:
+
+1.  **Cross-sectional framework**: we start with the cross-sectional reconciliation [@wickramasuriya2018; @panagiotelis2023] of monthly time series.
+
+2.  **Temporal framework**: focusing on a single time series, this section explores temporal reconciliation methods [@athanasopoulos2017], ensuring consistency and coherence in forecasting across different frequencies.
+
+3.  **Cross-temporal framework**: By integrating temporal and cross-sectional constraints [@difonzo2023; @girolimetto2023], this part of the tutorial demonstrates how to achieve coherent cross-temporal point and probabilistic forecasts.
+
+### Cross-sectional framework
+
+Our objective is to generate point reconciled forecasts for the monthly data using the *shr* approach (`comb = "shr"`), which involves shrinking the sample covariance matrix towards the diagonal (more details in the `FoReco` documentation).
+
+```{r}
+#| label: "reco_cs"
+base_cs <- base$`k-1`
+res_cs <- res$`k-1`
+reco_cs <- htsrec(basef = base_cs,  # base forecasts
+                  C = C,            # aggregation matrix
+                  #Ut = Ut,         # zero constraints matrix
+                  comb = "shr",     # covariance matrix approx
+                  res = res_cs,     # residuals
+                  #type = "S",      # reconciliation formula
+                  keep = "recf")    # output option
+str(reco_cs)
+```
+
+To verify that the forecasts have been reconciled, we can check that all the cross-sectional constraints have been satisfied.
+
+```{r}
+#| label: "check_cs"
+max(abs(Ut%*%t(reco_cs)))
+```
+
+Unfortunately, our reconciled forecasts contain negative values (`any(reco_cs<0)=` `r any(reco_cs<0)`), even though we used non-negative base forecasts during the reconciliation (`any(base_cs<0)=` `r any(base_cs<0)`). To address this issue, we can use two approaches:
+
+-   State-of-the-art numerical optimization procedure, **osqp** [@stellato2020].
+
+```{r}
+#| label: "osqp_cs"
+osqp_cs <- htsrec(basef = base_cs, C = C, comb = "shr", res = res_cs, keep = "recf",
+                  #nn_type = "osqp",
+                  nn = TRUE)
+str(osqp_cs)
+osqp_cs$info
+```
+
+-   Simple heuristic strategy: set-negative-to-zero, **sntz** [@difonzo2023a].
+
+```{r}
+#| label: "sntz_cs"
+sntz_cs <- htsrec(basef = base_cs, C = C, comb = "shr", res = res_cs, keep = "recf",
+                  nn_type = "sntz",
+                  nn = TRUE)
+```
+
+In recent research [@panagiotelis2023], it's been shown that a sample from the reconciled distribution can be obtained by reconciling a sample from the incoherent distribution. This distinction between the incoherent sample and the reconciliation allows us to separate the two steps.
+
+We can use a non-parametric method, the joint block bootstrap to simulate B samples and then reconciled them.
+
+```{r}
+#| label: "csjb"
+B <- 100 # Sample size for the probabilistic forecasts sample
+
+# Base forecasts' sample
+base_csjb <- boot_cs(fit$`k-1`, B, 12)$sample 
+str(base_csjb)
+
+# Reconciled forecasts' sample: 
+reco_csjb <- apply(base_csjb, 3, htsrec, C = C, res = res_cs, nn = TRUE, nn_type = "sntz",
+                   comb = "shr", keep = "recf", simplify = FALSE)
+reco_csjb <- simplify2array(reco_csjb)
+str(reco_csjb)
+```
+
+Another method assumes a normal distribution (Gaussian), to generate the incoherent sample set of forecasts.
+
+```{r}
+#| label: "csg"
+# List of 12 covariance matrix (one for each forecast horizon)
+cov_cs <- lapply(hres$`k-1`, function(r) shrink_estim(r)$scov) 
+
+# Base forecasts' sample
+base_csg <- lapply(1:12, function(h) rmvnormal(n = B, mu = base_cs[h, ], 
+                                                    sigma = cov_cs[[h]]))
+base_csg <- simplify2array(base_csg)
+str(base_csg)
+
+# Reconciled forecasts' sample:
+reco_csg <- apply(base_csg, 3, htsrec, C = C, res = res_cs, nn = TRUE, nn_type = "sntz",
+                  comb = "shr", keep = "recf", simplify = FALSE)
+reco_csg <- simplify2array(reco_csg)
+str(reco_csg)
+```
+
+```{r}
+#| label: "cs_plot"
+#| out-width: "90%"
+#| fig-align: "center"
+#| fig-width: 5
+#| fig-height: 6
+#| code-fold: true
+#| layout-ncol: 2
+name_serie <- "ADB"
+id_serie <- which(colnames(data) == name_serie)
+bfc_csjb <- melt(base_csjb[, id_serie, ])
+rfc_csjb <- melt(reco_csjb[, id_serie, ])
+bfc_csg <- melt(base_csg[, id_serie, ])
+rfc_csg <- melt(reco_csg[, id_serie, ])
+bfc_csjb$type <- bfc_csg$type <- "base forecasts"
+rfc_csjb$type <- rfc_csg$type <- "reconciled forecasts"
+bfc_csjb$facet <- rfc_csjb$facet <- "Bootstrap"
+bfc_csg$facet <- rfc_csg$facet <- "Gaussian"
+
+rbind(bfc_csjb, rfc_csjb) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 2, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+
+rbind(bfc_csg, rfc_csg) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 2, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+```
+
+### Temporal framework
+
+In the temporal case, we are working with a single series (e.g., $ADB=$ [Capital Country](https://en.wikipedia.org/wiki/Capital_Country)). In this case, we no longer have matrices as inputs to the functions, but rather vectors whose components are ordered according to increasing temporal frequency.
+
+![](images/base_te.png){fig-align="center" width="75%"}
+
+```{r}
+#| label: "reco_te"
+name_serie <- "ADB"
+id_serie <- which(colnames(data) == name_serie)
+base_te <- Reduce(rbind, base)[, id_serie]  # base forecasts
+str(unname(base_te))
+res_te <- Reduce(rbind, res)[, id_serie]    # residuals
+str(unname(res_te))
+
+reco_te <- thfrec(basef = base_te,  # base forecasts
+                  m = 12,           # max. order of temporal aggregation
+                  comb = "wlsv",    # covariance matrix approx
+                  #comb = "struc",  # covariance matrix approx (no res)
+                  res = res_te,     # residuals
+                  nn = TRUE,        # Non-negative forecasts
+                  nn_type = "sntz", # Non-negative approach
+                  keep = "recf")    # output option
+str(unname(reco_te))
+```
+
+To verify that the forecasts have been reconciled, we can check that all the temporal constraints have been satisfied.
+
+```{r}
+#| label: "check_te"
+max(abs(Zt %*% reco_te))
+```
+
+According to @girolimetto2023, we can use the same approaches as in the cross-sectional framework, but we need to take into account the different frequencies. To generates a bootstrap sample, we use the cross-temporal idea limiting the number of cross-sectional variables involved to be one.
+
+```{r}
+#| label: "tejb"
+# Base forecasts' sample
+fit_te <- lapply(fit, function(x) x[[which(names(x) == name_serie)]])
+base_tejb <- boot_te(fit_te, B, m = 12)$sample
+str(base_tejb)
+
+# Reconciled forecasts' sample:
+reco_tejb <- apply(base_tejb, 1, thfrec, m = 12, 
+                     res = res_te, comb = "wlsv", keep = "recf", simplify = FALSE)
+reco_tejb <- t(simplify2array(reco_tejb))
+str(reco_tejb)
+```
+
+In the Gaussian approach, we assume that all the base forecasts follow a multivariate normal distribution, and we calculate the covariance matrix of the base forecasts using multi-step residuals.
+
+```{r}
+#| label: "teg"
+# Base forecasts' sample:
+hres_te <- Reduce("rbind", lapply(hres, arrange_hres))[, id_serie]
+# Re-arrenge multi-step residuals in a matrix form
+mres_te <- residuals_matrix(hres_te, m = 12)
+cov_te <- shrink_estim(mres_te)$scov
+base_teg <- rmvnormal(n = B, mu = base_te, sigma = cov_te)
+str(base_teg)
+
+# Reconciled forecasts' sample:
+reco_teg <- t(apply(base_teg, 1, thfrec, m = 12, comb = "wlsv", res = res_te, keep = "recf"))
+str(reco_teg)
+```
+
+```{r}
+#| label: "te_plot"
+#| out-width: "90%"
+#| fig-align: "center"
+#| fig-width: 5
+#| fig-height: 6
+#| code-fold: true
+#| layout-ncol: 2
+bfc_tejb <- melt(base_tejb[, -c(1:16)])
+rfc_tejb <- melt(unname(reco_tejb[, -c(1:16)]))
+bfc_teg <- melt(base_teg[, -c(1:16)])
+rfc_teg <- melt(unname(reco_teg[, -c(1:16)]))
+bfc_tejb$type <- bfc_teg$type <- "base forecasts"
+rfc_tejb$type <- rfc_teg$type <- "reconciled forecasts"
+bfc_tejb$facet <- rfc_tejb$facet <- "Bootstrap"
+bfc_teg$facet <- rfc_teg$facet <- "Gaussian"
+
+rbind(bfc_tejb, rfc_tejb) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 2, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+
+rbind(bfc_teg, rfc_teg) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 2, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+```
+
+### Cross-temporal framework
+
+Finally, we obtain probabilistic reconciled forecasts in the cross-temporal framework. To perform cross-temporal reconciliation with `FoReco`, it is necessary to arrange base forecasts (and residuals) in matrix form. The rows of the matrix represent the cross-sectional variables, while the columns the temporal dimension.
+
+![](images/base_ct.png){style="width: 75%;" fig-align="center"}
+
+```{r}
+#| label: "reco_ct"
+base_ct <- t(Reduce(rbind, base))
+res_ct <- t(Reduce(rbind, res))
+reco_ct <- octrec(basef = base_ct,  # base forecasts
+                  m = 12,           # max. order of temporal aggregation
+                  C = C,            # aggregation matrix
+                  comb = "wlsv",    # covariance matrix approx
+                  res = res_ct,     # residuals
+                  type = "S",       # reconciliation formula
+                  nn = TRUE,        # Non-negative forecasts
+                  nn_type = "sntz", # Non-negative approach
+                  keep = "recf")    # output option
+str(reco_ct)
+```
+
+To verify that the forecasts have been reconciled, we can check that all the cross-sectional and temporal constraints have been satisfied.
+
+```{r}
+#| label: "check_ct"
+cat('Cross-sectional discrepancy:', max(abs(Ut%*%reco_ct)), '\n',
+    '      Temporal discrepancy:', max(abs(Zt%*%t(reco_ct))))
+```
+
+A non-parametric method to simulate from an incoherent distribution is the cross-temporal joint block bootstrap that preserve cross-sectional and temporal relationships.
+
+```{r}
+#| label: "ctjb"
+# Base forecasts' sample
+base_ctjb <- boot_ct(fit, B, m = 12)$sample 
+str(base_ctjb[1:3])
+
+# # Reconciled forecasts' sample:
+# reco_ctjb <- lapply(base_ctjb, function(boot_base){
+#   octrec(t(boot_base), m = 12, C = C, res = res_ct, 
+#          comb = "bdshr", keep = "recf", nn = TRUE, nn_type = "sntz")
+# })
+
+# Tip to speed up the time: B reconciliation to 1 reconciliation
+ctjb_mlist <- lapply(base_ctjb, function(x) FoReco2matrix(t(x), m = 12))
+ctjb_list <- unlist(ctjb_mlist, recursive=FALSE)
+id <- sort.int(factor(names(ctjb_list), paste0("k", c(12, 6, 4, 3, 2, 1)), ordered = TRUE), 
+               index.return =TRUE)$ix
+base_ctjb_mat <- t(Reduce("rbind", ctjb_list[id]))
+str(base_ctjb_mat)
+
+# Reconciled forecasts' sample:
+reco_ctjb <- octrec(basef = base_ctjb_mat, res = res_ct, m = 12, C = C,
+                    comb = "wlsv", keep = "recf", type = "S",
+                    nn_type = "sntz", nn = TRUE)
+str(reco_ctjb)
+```
+
+Since we have to simulate from a multivariate normal distribution with a size of 14700, we will use a diagonal covariance matrix in this tutorial. However, it's important to note that this choice, as illustrated in the final plot, will result in a significantly narrow variance for the reconciled forecasts.
+
+```{r}
+#| label: "ctg"
+hres_ct <- t(Reduce("rbind", lapply(hres, arrange_hres)))
+# Re-arrenge multi-step residuals in a matrix form
+mres <- residuals_matrix(hres_ct, m = 12)
+
+# cov_shr_ct <- shrink_estim(na.omit(mres)) # Time and computational intensive to use, but the better one
+cov_ct <- diag(x = diag(cov(na.omit(mres))))
+
+# Base forecasts' sample:
+base_ctg <- rmvnormal(B, mu = residuals_matrix(base_ct, m = 12), 
+                      sigma = cov_ct)
+base_ctg <- apply(base_ctg, 1, function(x) matrix(x, ncol = NCOL(data)), simplify = FALSE)
+
+# Tip to speed up the time: B reconciliation to 1 reconciliation
+ctg_mlist <- lapply(base_ctg, function(x) FoReco2matrix(t(x), m = 12))
+ctg_list <- unlist(ctg_mlist, recursive=FALSE)
+id <- sort.int(factor(names(ctg_list), paste0("k", c(12, 6, 4, 3, 2, 1)), ordered = TRUE), 
+               index.return =TRUE)$ix
+base_ctg_mat <- t(Reduce("rbind", ctg_list[id]))
+str(base_ctg_mat)
+
+# Reconciled forecasts' sample:
+reco_ctg <- octrec(basef = base_ctg_mat, res = res_ct, m = 12, C = C,
+                   comb = "wlsv", keep = "recf", type = "S",
+                   nn_type = "sntz", nn = TRUE)
+str(reco_ctg)
+```
+
+```{r}
+#| label: "ct_plot"
+#| out-width: "90%"
+#| fig-align: "center"
+#| fig-width: 5
+#| fig-height: 6
+#| code-fold: true
+#| layout-ncol: 2
+ctjb_k1_b <- matrix(FoReco2matrix(base_ctjb_mat, m = 12)$k1[,id_serie], nrow = 12)
+ctjb_k1_r <- matrix(FoReco2matrix(reco_ctjb, m = 12)$k1[,id_serie], nrow = 12)
+ctg_k1_b <- matrix(FoReco2matrix(base_ctg_mat, m = 12)$k1[,id_serie], nrow = 12)
+ctg_k1_r <- matrix(FoReco2matrix(reco_ctg, m = 12)$k1[,id_serie], nrow = 12)
+
+bfc_ctjb <- melt(t(ctjb_k1_b))
+rfc_ctjb <- melt(t(ctjb_k1_r))
+bfc_ctg <- melt(t(ctg_k1_b))
+rfc_ctg <- melt(t(ctg_k1_r))
+bfc_ctjb$type <- bfc_ctg$type <- "base forecasts"
+rfc_ctjb$type <- rfc_ctg$type <- "reconciled forecasts"
+bfc_ctjb$facet <- rfc_ctjb$facet <- "Bootstrap approach"
+bfc_ctg$facet <- rfc_ctg$facet <- "Gaussian approach"
+
+rbind(bfc_ctjb, rfc_ctjb) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 3, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+
+rbind(bfc_ctg, rfc_ctg) |>
+  filter(Var2 %in% c(1,2,6,12)) |>
+  ggplot(aes(x = value, fill = type, col = type)) +
+  geom_density(adjust = 2, alpha = 0.15)+
+  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  facet_grid(Var2~facet, scales = "free")+
+  theme_minimal()+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.title = element_blank(),
+        axis.text.y=element_blank(),
+        legend.position = "bottom")
+```
+
+### 

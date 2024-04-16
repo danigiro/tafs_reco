@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+.AppleDouble
+.LSOverride
+*_files
+*_cache
+README.html
+
+/.quarto/

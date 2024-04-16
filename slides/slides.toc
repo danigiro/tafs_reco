@@ -1,0 +1,8 @@
+\beamer@sectionintoc {1}{Introduction}{4}{0}{1}
+\beamer@sectionintoc {2}{Cross-sectional, temporal and cross-temporal framework}{5}{0}{2}
+\beamer@sectionintoc {3}{Point forecast reconciliation (cross-temporal framework)}{14}{0}{3}
+\beamer@sectionintoc {4}{Probabilistic forecast reconciliation (cross-temporal framework)}{17}{0}{4}
+\beamer@sectionintoc {5}{Forecasting the Australian Tourism Demand}{21}{0}{5}
+\beamer@sectionintoc {6}{Forecast reconciliation software}{25}{0}{6}
+\beamer@sectionintoc {7}{How to use forecast reconciliation\nobreakspace {}{{\FAtwo \symbol {47}}}}{27}{0}{7}
+\beamer@sectionintoc {8}{Conclusions}{28}{0}{8}
