@@ -2,7 +2,7 @@
 \usetheme{Madrid} 
 
 %% COLOR
-\usepackage{fontawesome}
+\usepackage{fontawesome5}
 \usepackage{adjustbox}
 \usepackage{array}
 \usepackage{ifthen}
@@ -314,7 +314,7 @@
 	\includegraphics[width = 0.9\linewidth]{img/ijf.jpg}
 \end{minipage}\begin{minipage}{0.65\linewidth}
 \begin{itemize}
-	\item[\faFileTextO] Girolimetto, D., Athanasopoulos, G., Di Fonzo, T., \& Hyndman, R. J. (2023). Cross-temporal probabilistic forecast reconciliation: Methodological and practical issues. International Journal of Forecasting. \href{https://doi.org/10.1016/j.ijforecast.2023.10.003}{\color{newblue}\texttt{DOI:10.1016/j.ijforecast.2023.10.003}}
+	\item[{\faIcon*[regular]{file}}] Girolimetto, D., Athanasopoulos, G., Di Fonzo, T., \& Hyndman, R. J. (2023). Cross-temporal probabilistic forecast reconciliation: Methodological and practical issues. International Journal of Forecasting. \href{https://doi.org/10.1016/j.ijforecast.2023.10.003}{\color{newblue}\texttt{DOI:10.1016/j.ijforecast.2023.10.003}}
 \end{itemize}
 \vskip0.5cm
 \centering
@@ -1064,7 +1064,7 @@ Lines[angle=45, distance=3mm,  line width=1.5mm]%
 \end{itemize}
 \end{enumerate}
 \begin{itemize}
-	\item[\faThumbTack] The formulation of $\text{Var}(\widehat{\xvet}_h -\xvet_h)$ is conceptually {\color{newred}complex}; in practice, \hyperlink{app:cov}{\ul{approximate forms}} of $\text{Var}(\widehat{\xvet}_h -\xvet_h) \approx \Omegavet_{ct}$ are used, possibly using in-sample residuals
+	\item[\faThumbtack] The formulation of $\text{Var}(\widehat{\xvet}_h -\xvet_h)$ is conceptually {\color{newred}complex}; in practice, \hyperlink{app:cov}{\ul{approximate forms}} of $\text{Var}(\widehat{\xvet}_h -\xvet_h) \approx \Omegavet_{ct}$ are used, possibly using in-sample residuals
 	\end{itemize}
 \end{frame}
 
@@ -1107,7 +1107,7 @@ Lines[angle=45, distance=3mm,  line width=1.5mm]%
 		\draw[-{Triangle[scale=1.5]}, decorate, decoration={snake,pre length=1pt,post length=8pt}, thick, shorten >= 0pt] (cs) -- (ct);
 	\end{tikzpicture}
 	\begin{itemize}
-		\item[\faThumbTack] A generalized probabilistic cross-temporal framework for {\color{newred}\textbf{count data}} can be obtained following the cross-sectional work of \cite{corani2022} $\rightarrow$ however, we only focus on the {\color{avocado}\textbf{continuous case}}
+		\item[\faThumbtack] A generalized probabilistic cross-temporal framework for {\color{newred}\textbf{count data}} can be obtained following the cross-sectional work of \cite{corani2022} $\rightarrow$ however, we only focus on the {\color{avocado}\textbf{continuous case}}
 	\end{itemize}
 	\begin{exampleblock}{Thm: Cross-temporal Reconciled Samples}\centering
 	\begin{tikzpicture}[baseline=(current  bounding  box.center)]
@@ -1167,7 +1167,7 @@ $N\left(\widetilde{\xvet}, \widetilde{\Omegavet} \right)$\\
 		\widehat{\xvet}_{i,\ell}^{[k]} = f_i(\mathcal{M}_i, \widehat{\evet}_{i, \tau}^{[k]}) 
 		$$
 		\item Need to generate samples that preserve \textbf{\color{avocado}cross-temporal} relationships
-		\item[\faLightbulbO] \textbf{Idea}
+		\item[{\faIcon[regular]{lightbulb}}] \textbf{Idea}
 		\begin{enumerate}
 			\item sampling the index time $\tau$ from the {\color{avocado}most temporally aggregated level}
 			\item using it to determine the \textbf{indices for all the other levels}
@@ -1323,7 +1323,7 @@ $B$ \& \pgfuseimage{ngreen2} \& \pgfuseimage{nblue2} \& \pgfuseimage{nred2} \& \
 		\item Continuous Ranked Probability Score (\hyperlink{app:Acc}{\color{newblue}\ul{CRPS}})
 		\item Energy Score (\hyperlink{app:Acc}{\color{newblue}\ul{ES}})
 		\end{itemize}
-	\item[\faThumbTack] Dealing with \textbf{\color{newred}negativity issues}: \hyperlink{app:sntz}{\color{avocado}set-negative-to-zero} (\citealp{difonzo2023a})
+	\item[\faThumbtack] Dealing with \textbf{\color{newred}negativity issues}: \hyperlink{app:sntz}{\color{avocado}set-negative-to-zero} (\citealp{difonzo2023a})
 	\end{itemize}
 \end{frame}
 
@@ -1372,7 +1372,7 @@ oct$(ols)$ & \textcolor{black}{0.989} & \textcolor{black}{0.989} & \textcolor{bl
 \rowcolor{green!50}oct$(bdshr)$ & \textcolor{black}{\textbf{0.975}} & \textcolor{black}{\textbf{0.956}} & \textcolor{black}{\textbf{0.953}} & \textcolor{black}{\textbf{0.952}} & \textcolor{blue}{\textbf{0.951}} & \textcolor{blue}{\textbf{0.949}} & \textcolor{black}{\textbf{0.955}} & \textcolor{black}{\textbf{0.953}} & \textcolor{black}{\textbf{0.954}} & \textcolor{black}{\textbf{0.954}}\\
 \bottomrule
 \end{tabular}}\\[0.25cm]
-\begin{itemize}[label = \faThumbTack, leftmargin = 1.25cm]
+\begin{itemize}[label = \faThumbtack, leftmargin = 1.25cm]
 	\item Overall, oct$(bdshr)$ in terms of CRPS is almost always the best \;  \faArrowRight \; \hyperlink{tab:mcb}{\ul{MCB Nemenyi test}}
 \end{itemize}
 \end{frame}
