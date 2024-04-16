@@ -381,7 +381,7 @@ rbind(bfc_csjb, rfc_csjb) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 2, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -393,7 +393,7 @@ rbind(bfc_csg, rfc_csg) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 2, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -489,7 +489,7 @@ rbind(bfc_tejb, rfc_tejb) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 2, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -501,7 +501,7 @@ rbind(bfc_teg, rfc_teg) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 2, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -626,7 +626,7 @@ rbind(bfc_ctjb, rfc_ctjb) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 3, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -638,7 +638,7 @@ rbind(bfc_ctg, rfc_ctg) |>
   filter(Var2 %in% c(1,2,6,12)) |>
   ggplot(aes(x = value, fill = type, col = type)) +
   geom_density(adjust = 2, alpha = 0.15)+
-  labs(x = NULL, y = "Total | monthly | {1,2,6,12}-step ahead")+
+  labs(x = NULL, y = "Capital Country | monthly | {1,2,6,12}-step ahead")+
   facet_grid(Var2~facet, scales = "free")+
   theme_minimal()+
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
